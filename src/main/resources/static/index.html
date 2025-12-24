@@ -7,10 +7,15 @@
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; margin: 24px; }
     .wrap { max-width: 900px; margin: auto; }
-    .row { display: flex; gap: 24px; flex-wrap: wrap; }
     img { max-width: 100%; border-radius: 8px; }
     button { padding: 10px 16px; font-size: 16px; }
-    .loading { margin-top: 12px; }
+    pre {
+      white-space: pre-wrap;
+      background: #f6f6f6;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -23,9 +28,9 @@
   <input id="vibe" placeholder="Vibe (e.g. minimalist, bold)" /><br/><br/>
   <input id="notes" placeholder="Notes (optional)" /><br/><br/>
 
-  <button onclick="run()">Analyze</button>
+  <button onclick="run()">Analyze Outfit</button>
 
-  <div id="status" class="loading"></div>
+  <p id="status"></p>
 
   <h2>Observations</h2>
   <p id="obs"></p>
@@ -33,14 +38,20 @@
   <h2>Quick Fixes</h2>
   <ul id="fixes"></ul>
 
-  <h2>Generated Result</h2>
-  <img id="out" />
+  <h2>Generated Image Prompt</h2>
+  <pre id="prompt">Prompt will appear here after analysis.</pre>
+
+  <h2>Generated Image</h2>
+  <p style="opacity:0.6">Image generation will be added in the next step.</p>
 </div>
 
 <script>
 async function run() {
   const file = document.getElementById("img").files[0];
-  if (!file) return alert("Please upload an image.");
+  if (!file) {
+    alert("Please upload an image.");
+    return;
+  }
 
   const fd = new FormData();
   fd.append("image", file);
@@ -48,28 +59,37 @@ async function run() {
   fd.append("vibe", vibe.value);
   fd.append("notes", notes.value);
 
-  status.textContent = "Analyzing outfit and generating styling ideas…";
+  status.textContent = "Analyzing outfit...";
+  obs.textContent = "";
   fixes.innerHTML = "";
-  out.src = "";
+  prompt.textContent = "";
 
-  const res = await fetch("/api/fashion/style", { method: "POST", body: fd });
+  const res = await fetch("/api/fashion/style", {
+    method: "POST",
+    body: fd
+  });
+
+  if (!res.ok) {
+    status.textContent = "Error analyzing image.";
+    return;
+  }
+
   const data = await res.json();
-
   status.textContent = "";
 
   obs.textContent =
     data.observations ||
-    "We analyzed the outfit, but some details were unclear. Try a clearer photo or add notes.";
+    "We analyzed the outfit, but some details were unclear.";
 
-  (data.quickFixes || []).slice(0, 6).forEach(f => {
+  (data.quickFixes || []).forEach(fix => {
     const li = document.createElement("li");
-    li.textContent = f;
+    li.textContent = fix;
     fixes.appendChild(li);
   });
 
-  if (data.base64) {
-    out.src = `data:${data.mimeType};base64,${data.base64}`;
-  }
+  prompt.textContent =
+    data.imagePrompt ||
+    "No image prompt was generated.";
 }
 </script>
 </body>
