@@ -73,8 +73,12 @@ async function analyze() {
   prompt.textContent = currentPrompt;
 }
 
+<script>
 async function generateImage() {
-  if (!currentPrompt) return alert("Analyze first");
+  if (!currentPrompt) {
+    alert("Analyze first");
+    return;
+  }
 
   status.textContent = "Generating image...";
 
@@ -87,7 +91,26 @@ async function generateImage() {
   const data = await res.json();
   status.textContent = "";
 
-  out.src = `data:${data.mimeType};base64,${data.base64}`;
+  if (!data.base64) {
+    alert("No image data returned");
+    return;
+  }
+
+  // 🔥 SAFARI + WEBP FIX
+  const mime = data.mimeType || "image/png";
+
+  // Force re-render
+  out.removeAttribute("src");
+  out.style.display = "none";
+
+  // Create data URL safely
+  const dataUrl = `data:${mime};base64,${data.base64}`;
+
+  // Delay forces browser repaint
+  setTimeout(() => {
+    out.src = dataUrl;
+    out.style.display = "block";
+  }, 50);
 }
 </script>
 
