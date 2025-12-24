@@ -1,57 +1,48 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8" />
   <title>Gemini Fashion Styler</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { font-family: system-ui, -apple-system, sans-serif; margin: 24px; }
-    .wrap { max-width: 900px; margin: auto; }
+    body { font-family: system-ui; margin: 24px; }
     img { max-width: 100%; border-radius: 8px; }
-    button { padding: 10px 16px; font-size: 16px; }
-    pre {
-      white-space: pre-wrap;
-      background: #f6f6f6;
-      padding: 12px;
-      border-radius: 6px;
-      font-size: 14px;
-    }
+    pre { background:#f6f6f6; padding:12px; border-radius:6px; }
+    button { padding:10px 16px; margin-top:12px; }
   </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Gemini Fashion Styler</h1>
 
-  <input type="file" id="img" accept="image/*" /><br/><br/>
+<h1>Gemini Fashion Styler</h1>
 
-  <input id="occasion" placeholder="Occasion (e.g. work, date)" /><br/><br/>
-  <input id="vibe" placeholder="Vibe (e.g. minimalist, bold)" /><br/><br/>
-  <input id="notes" placeholder="Notes (optional)" /><br/><br/>
+<input type="file" id="img" accept="image/*"><br><br>
+<input id="occasion" placeholder="Occasion"><br><br>
+<input id="vibe" placeholder="Vibe"><br><br>
+<input id="notes" placeholder="Notes"><br><br>
 
-  <button onclick="run()">Analyze Outfit</button>
+<button onclick="analyze()">Analyze Outfit</button>
 
-  <p id="status"></p>
+<p id="status"></p>
 
-  <h2>Observations</h2>
-  <p id="obs"></p>
+<h2>Observations</h2>
+<p id="obs"></p>
 
-  <h2>Quick Fixes</h2>
-  <ul id="fixes"></ul>
+<h2>Quick Fixes</h2>
+<ul id="fixes"></ul>
 
-  <h2>Generated Image Prompt</h2>
-  <pre id="prompt">Prompt will appear here after analysis.</pre>
+<h2>Generated Prompt (Step 3)</h2>
+<pre id="prompt"></pre>
 
-  <h2>Generated Image</h2>
-  <p style="opacity:0.6">Image generation will be added in the next step.</p>
-</div>
+<button onclick="generateImage()">Generate Image (Step 4)</button>
+
+<h2>Generated Image</h2>
+<img id="out"/>
 
 <script>
-async function run() {
-  const file = document.getElementById("img").files[0];
-  if (!file) {
-    alert("Please upload an image.");
-    return;
-  }
+let currentPrompt = "";
+
+async function analyze() {
+  const file = img.files[0];
+  if (!file) return alert("Upload an image");
 
   const fd = new FormData();
   fd.append("image", file);
@@ -59,39 +50,47 @@ async function run() {
   fd.append("vibe", vibe.value);
   fd.append("notes", notes.value);
 
-  status.textContent = "Analyzing outfit...";
-  obs.textContent = "";
+  status.textContent = "Analyzing...";
   fixes.innerHTML = "";
-  prompt.textContent = "";
+  out.src = "";
 
   const res = await fetch("/api/fashion/style", {
     method: "POST",
     body: fd
   });
 
-  if (!res.ok) {
-    status.textContent = "Error analyzing image.";
-    return;
-  }
+  const data = await res.json();
+  status.textContent = "";
+
+  obs.textContent = data.observations;
+  (data.quickFixes || []).forEach(f => {
+    const li = document.createElement("li");
+    li.textContent = f;
+    fixes.appendChild(li);
+  });
+
+  currentPrompt = data.imagePrompt;
+  prompt.textContent = currentPrompt;
+}
+
+async function generateImage() {
+  if (!currentPrompt) return alert("Analyze first");
+
+  status.textContent = "Generating image...";
+
+  const res = await fetch("/api/fashion/generate-image", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: currentPrompt })
+  });
 
   const data = await res.json();
   status.textContent = "";
 
-  obs.textContent =
-    data.observations ||
-    "We analyzed the outfit, but some details were unclear.";
-
-  (data.quickFixes || []).forEach(fix => {
-    const li = document.createElement("li");
-    li.textContent = fix;
-    fixes.appendChild(li);
-  });
-
-  prompt.textContent =
-    data.imagePrompt ||
-    "No image prompt was generated.";
+  out.src = `data:${data.mimeType};base64,${data.base64}`;
 }
 </script>
+
 </body>
 </html>
 

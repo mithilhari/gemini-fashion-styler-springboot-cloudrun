@@ -9,6 +9,9 @@ import com.google.genai.types.Part;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Base64;
+import java.util.List;
+
 @Service
 public class FashionService {
 
@@ -19,6 +22,11 @@ public class FashionService {
     this.client = client;
   }
 
+  /**
+   * STEP 1 + 2
+   * Analyze the uploaded image and return observations, quick fixes,
+   * and a high-quality image generation prompt.
+   */
   public FashionResponse style(
       MultipartFile image,
       String occasion,
@@ -69,6 +77,62 @@ Notes: %s
         advice.getImagePrompt()
     );
   }
+
+  /**
+   * STEP 4
+   * Generate an image from the previously generated prompt.
+   */
+  public ImageGenResponse generateImage(String prompt) {
+
+    Content content = Content.fromParts(
+        Part.fromText(prompt)
+    );
+
+    GenerateContentResponse response =
+        client.models.generateContent("gemini-2.5-flash", content, null);
+
+    var candidatesOpt = response.candidates();
+    if (candidatesOpt.isEmpty() || candidatesOpt.get().isEmpty()) {
+      throw new RuntimeException("No candidates returned by Gemini");
+    }
+
+    var candidate = candidatesOpt.get().get(0);
+
+    var contentOpt = candidate.content();
+    if (contentOpt.isEmpty()) {
+      throw new RuntimeException("No content in Gemini response");
+    }
+
+    var partsOpt = contentOpt.get().parts();
+    if (partsOpt.isEmpty()) {
+      throw new RuntimeException("No parts in Gemini content");
+    }
+
+    byte[] outBytes = null;
+    String outMime = "image/png";
+
+    for (Part p : partsOpt.get()) {
+      var inlineOpt = p.inlineData();
+      if (inlineOpt.isPresent()) {
+        var blob = inlineOpt.get();
+        outBytes = blob.data().orElse(null);
+        outMime = blob.mimeType().orElse("image/png");
+        break;
+      }
+    }
+
+    if (outBytes == null) {
+      throw new RuntimeException("Image generation failed: no image bytes");
+    }
+
+    String base64 = Base64.getEncoder().encodeToString(outBytes);
+
+    return new ImageGenResponse(outMime, base64);
+  }
+
+  // -----------------------------
+  // Helpers
+  // -----------------------------
 
   private String clean(String raw) {
     raw = raw.replace("```json", "").replace("```", "").trim();

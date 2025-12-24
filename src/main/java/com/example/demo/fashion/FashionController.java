@@ -25,8 +25,19 @@ public class FashionController {
       @RequestPart(required = false) String vibe,
       @RequestPart(required = false) String notes
   ) throws Exception {
-
     return service.style(image, occasion, vibe, notes);
   }
+
+  @PostMapping(
+      path = "/generate-image",
+      consumes = MediaType.APPLICATION_JSON_VALUE,
+      produces = MediaType.APPLICATION_JSON_VALUE
+  )
+  public ImageGenResponse generateImage(
+      @RequestBody ImageGenRequest req
+  ) {
+    return service.generateImage(req.getPrompt());
+  }
+
 }
 
