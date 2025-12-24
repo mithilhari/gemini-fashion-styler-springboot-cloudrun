@@ -1,41 +1,162 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="utf-8"/>
   <title>Gemini Fashion Styler</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
   <style>
-    body { font-family: system-ui; margin: 24px; }
-    img { max-width: 100%; border-radius: 8px; margin-top: 12px; }
-    pre { background:#f6f6f6; padding:12px; border-radius:6px; }
-    button { padding:10px 16px; margin-top:12px; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #fafafa;
+      margin: 0;
+      padding: 16px;
+      color: #222;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.06);
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 1.8rem;
+    }
+
+    h2 {
+      margin-top: 28px;
+      font-size: 1.2rem;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 6px;
+    }
+
+    p.hint {
+      font-size: 0.9rem;
+      color: #666;
+      margin-top: 4px;
+    }
+
+    input, textarea, button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 12px;
+      font-size: 1rem;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    button {
+      background: #111;
+      color: white;
+      cursor: pointer;
+      border: none;
+      font-weight: 600;
+    }
+
+    button.secondary {
+      background: #eee;
+      color: #111;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    ul {
+      padding-left: 20px;
+    }
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    .status {
+      margin-top: 12px;
+      font-size: 0.95rem;
+      color: #444;
+    }
+
+    img {
+      max-width: 100%;
+      border-radius: 10px;
+      margin-top: 16px;
+    }
+
+    .step {
+      margin-top: 24px;
+    }
+
+    .hidden {
+      display: none;
+    }
   </style>
 </head>
+
 <body>
+<div class="container">
 
-<h1>Gemini Fashion Styler</h1>
+  <h1>👗 Gemini Fashion Styler</h1>
+  <p class="hint">
+    Upload a photo, get styling suggestions, then generate an improved look.
+  </p>
 
-<input type="file" id="img" accept="image/*"><br><br>
-<input id="occasion" placeholder="Occasion"><br><br>
-<input id="vibe" placeholder="Vibe"><br><br>
-<input id="notes" placeholder="Notes"><br><br>
+  <!-- STEP 1 -->
+  <div class="step">
+    <h2>1️⃣ Upload your outfit</h2>
+    <input type="file" id="img" accept="image/*"/>
+  </div>
 
-<button id="analyzeBtn">Analyze Outfit</button>
-<button id="genBtn" disabled>Generate Image</button>
+  <!-- STEP 2 -->
+  <div class="step">
+    <h2>2️⃣ Context (optional)</h2>
+    <input id="occasion" placeholder="Occasion (e.g. work, wedding, date)"/>
+    <input id="vibe" placeholder="Vibe (e.g. minimalist, bold, elegant)"/>
+    <input id="notes" placeholder="Extra notes (optional)"/>
 
-<p id="status"></p>
+    <button id="analyzeBtn">Analyze Outfit</button>
+    <div id="status" class="status"></div>
+  </div>
 
-<h2>Observations</h2>
-<p id="obs"></p>
+  <!-- STEP 3 -->
+  <div class="step hidden" id="analysisSection">
+    <h2>3️⃣ Styling advice</h2>
 
-<h2>Quick Fixes</h2>
-<ul id="fixes"></ul>
+    <strong>What we see</strong>
+    <p id="obs"></p>
 
-<h2>Generated Prompt (Step 3)</h2>
-<pre id="prompt"></pre>
+    <strong>Quick improvements</strong>
+    <ul id="fixes"></ul>
+  </div>
 
-<h2>Generated Image (Step 4)</h2>
-<img id="out" style="display:none"/>
+  <!-- STEP 4 -->
+  <div class="step hidden" id="promptSection">
+    <h2>4️⃣ Suggested image prompt</h2>
+    <p class="hint">
+      You can edit this before generating the image.
+    </p>
+
+    <textarea id="prompt"></textarea>
+    <button id="genBtn">Generate Styled Image</button>
+  </div>
+
+  <!-- STEP 5 -->
+  <div class="step hidden" id="imageSection">
+    <h2>5️⃣ Generated look</h2>
+    <img id="out"/>
+  </div>
+
+</div>
 
 <script>
 let currentPrompt = "";
@@ -43,7 +164,6 @@ let currentPrompt = "";
 const analyzeBtn = document.getElementById("analyzeBtn");
 const genBtn = document.getElementById("genBtn");
 const status = document.getElementById("status");
-const out = document.getElementById("out");
 
 analyzeBtn.addEventListener("click", analyze);
 genBtn.addEventListener("click", generateImage);
@@ -55,12 +175,8 @@ async function analyze() {
     return;
   }
 
-  genBtn.disabled = true;
   status.textContent = "Analyzing outfit...";
-  fixes.innerHTML = "";
-  obs.textContent = "";
-  prompt.textContent = "";
-  out.style.display = "none";
+  analyzeBtn.disabled = true;
 
   const fd = new FormData();
   fd.append("image", file);
@@ -73,6 +189,8 @@ async function analyze() {
     body: fd
   });
 
+  analyzeBtn.disabled = false;
+
   if (!res.ok) {
     status.textContent = "Error analyzing image.";
     return;
@@ -81,7 +199,11 @@ async function analyze() {
   const data = await res.json();
   status.textContent = "";
 
+  document.getElementById("analysisSection").classList.remove("hidden");
+  document.getElementById("promptSection").classList.remove("hidden");
+
   obs.textContent = data.observations || "";
+  fixes.innerHTML = "";
   (data.quickFixes || []).forEach(f => {
     const li = document.createElement("li");
     li.textContent = f;
@@ -89,27 +211,26 @@ async function analyze() {
   });
 
   currentPrompt = data.imagePrompt || "";
-  prompt.textContent = currentPrompt;
-
-  if (currentPrompt) {
-    genBtn.disabled = false;
-  }
+  prompt.value = currentPrompt;
 }
 
 async function generateImage() {
-  if (!currentPrompt) {
-    alert("Analyze outfit first.");
+  const promptText = prompt.value.trim();
+  if (!promptText) {
+    alert("Prompt is empty.");
     return;
   }
 
   status.textContent = "Generating image...";
-  out.style.display = "none";
+  genBtn.disabled = true;
 
   const res = await fetch("/api/fashion/generate-image", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: currentPrompt })
+    body: JSON.stringify({ prompt: promptText })
   });
+
+  genBtn.disabled = false;
 
   if (!res.ok) {
     status.textContent = "Image generation failed.";
@@ -119,15 +240,8 @@ async function generateImage() {
   const data = await res.json();
   status.textContent = "";
 
-  if (!data.base64) {
-    alert("No image returned.");
-    return;
-  }
-
-  const mime = data.mimeType || "image/png";
-
-  out.src = `data:${mime};base64,${data.base64}`;
-  out.style.display = "block";
+  document.getElementById("imageSection").classList.remove("hidden");
+  out.src = `data:${data.mimeType || "image/png"};base64,${data.base64}`;
 }
 </script>
 
