@@ -1,32 +1,26 @@
 package com.example.demo.fashion;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.genai.Client;
-import com.google.genai.types.Content;
-import com.google.genai.types.GenerateContentResponse;
-import com.google.genai.types.Part;
+import com.google.auth.oauth2.GoogleCredentials;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Base64;
-import java.util.List;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 
 @Service
 public class FashionService {
 
-  private final Client client;
+  private static final String REGION = "us-central1";
   private final ObjectMapper mapper = new ObjectMapper();
 
-  public FashionService(Client client) {
-    this.client = client;
-  }
-
-  /**
-   * STEP 1 + 2
-   * Analyze the uploaded image and return observations, quick fixes,
-   * and a high-quality image generation prompt.
-   */
+  // -------------------------------
+  // STEP 1–3: ANALYSIS (Gemini Flash)
+  // -------------------------------
   public FashionResponse style(
       MultipartFile image,
       String occasion,
@@ -35,7 +29,7 @@ public class FashionService {
   ) throws Exception {
 
     byte[] imageBytes = image.getBytes();
-    String mimeType = image.getContentType();
+    String imageBase64 = java.util.Base64.getEncoder().encodeToString(imageBytes);
 
     String prompt = """
 Return ONLY valid JSON:
@@ -47,9 +41,9 @@ Return ONLY valid JSON:
 
 Rules:
 - No markdown
-- No ellipses
-- Describe only visible clothing
+- No commentary
 - No identity inference
+- Describe visible clothing only
 
 Occasion: %s
 Vibe: %s
@@ -60,16 +54,40 @@ Notes: %s
         safe(notes)
     );
 
-    Content content = Content.fromParts(
-        Part.fromBytes(imageBytes, mimeType),
-        Part.fromText(prompt)
+    String body = """
+{
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "inlineData": {
+            "mimeType": "%s",
+            "data": "%s"
+          }
+        },
+        { "text": "%s" }
+      ]
+    }
+  ]
+}
+""".formatted(
+        image.getContentType(),
+        imageBase64,
+        escape(prompt)
     );
 
-    GenerateContentResponse response =
-        client.models.generateContent("gemini-2.5-flash", content, null);
+    JsonNode response =
+        callVertex(
+            "gemini-2.5-flash:generateContent",
+            body
+        );
+
+    String text =
+        response.at("/candidates/0/content/parts/0/text").asText();
 
     FashionAdvice advice =
-        mapper.readValue(clean(response.text()), FashionAdvice.class);
+        mapper.readValue(clean(text), FashionAdvice.class);
 
     return new FashionResponse(
         advice.getObservations(),
@@ -78,67 +96,85 @@ Notes: %s
     );
   }
 
-  /**
-   * STEP 4
-   * Generate an image from the previously generated prompt.
-   */
-  public ImageGenResponse generateImage(String prompt) {
+  // -----------------------------------------
+  // STEP 4: IMAGE GENERATION (Flash Image 2.5)
+  // -----------------------------------------
+  public ImageGenResponse generateImageWithGeminiFlashImage(String prompt)
+      throws Exception {
 
-    Content content = Content.fromParts(
-        Part.fromText(prompt)
+    String body = """
+{
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        { "text": "%s" }
+      ]
+    }
+  ]
+}
+""".formatted(escape(prompt));
+
+    JsonNode response =
+        callVertex(
+            "gemini-2.5-flash-image:generateContent",
+            body
+        );
+
+    JsonNode inline =
+        response.at("/candidates/0/content/parts/0/inlineData");
+
+    if (inline.isMissingNode()) {
+      throw new RuntimeException("Gemini image generation failed");
+    }
+
+    return new ImageGenResponse(
+        inline.get("mimeType").asText(),
+        inline.get("data").asText()
     );
-
-    GenerateContentResponse response =
-        client.models.generateContent("gemini-2.5-flash", content, null);
-
-    var candidatesOpt = response.candidates();
-    if (candidatesOpt.isEmpty() || candidatesOpt.get().isEmpty()) {
-      throw new RuntimeException("No candidates returned by Gemini");
-    }
-
-    var candidate = candidatesOpt.get().get(0);
-
-    var contentOpt = candidate.content();
-    if (contentOpt.isEmpty()) {
-      throw new RuntimeException("No content in Gemini response");
-    }
-
-    var partsOpt = contentOpt.get().parts();
-    if (partsOpt.isEmpty()) {
-      throw new RuntimeException("No parts in Gemini content");
-    }
-
-    byte[] outBytes = null;
-    String outMime = "image/png";
-
-    for (Part p : partsOpt.get()) {
-      var inlineOpt = p.inlineData();
-      if (inlineOpt.isPresent()) {
-        var blob = inlineOpt.get();
-        outBytes = blob.data().orElse(null);
-        outMime = blob.mimeType().orElse("image/png");
-        break;
-      }
-    }
-
-    if (outBytes == null) {
-      throw new RuntimeException("Image generation failed: no image bytes");
-    }
-
-    String base64 = Base64.getEncoder().encodeToString(outBytes);
-
-    return new ImageGenResponse(outMime, base64);
   }
 
-  // -----------------------------
-  // Helpers
-  // -----------------------------
+  // -------------------------------
+  // Vertex AI REST helper
+  // -------------------------------
+  private JsonNode callVertex(String method, String body)
+      throws Exception {
 
+    String token =
+        GoogleCredentials.getApplicationDefault()
+            .refreshAccessToken()
+            .getTokenValue();
+
+    HttpRequest request = HttpRequest.newBuilder()
+        .uri(URI.create(
+            "https://" + REGION +
+            "-aiplatform.googleapis.com/v1/models/" + method))
+        .header("Authorization", "Bearer " + token)
+        .header("Content-Type", "application/json")
+        .POST(HttpRequest.BodyPublishers.ofString(body))
+        .build();
+
+    HttpResponse<String> response =
+        HttpClient.newHttpClient()
+            .send(request, HttpResponse.BodyHandlers.ofString());
+
+    return mapper.readTree(response.body());
+  }
+
+  // -------------------------------
+  // Helpers
+  // -------------------------------
   private String clean(String raw) {
-    raw = raw.replace("```json", "").replace("```", "").trim();
+    raw = raw.replace("```json", "")
+             .replace("```", "")
+             .trim();
     int a = raw.indexOf('{');
     int b = raw.lastIndexOf('}');
     return raw.substring(a, b + 1);
+  }
+
+  private String escape(String s) {
+    return s.replace("\"", "\\\"");
   }
 
   private String safe(String s) {

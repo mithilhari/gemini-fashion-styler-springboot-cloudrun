@@ -33,11 +33,9 @@ public class FashionController {
       consumes = MediaType.APPLICATION_JSON_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE
   )
-  public ImageGenResponse generateImage(
-      @RequestBody ImageGenRequest req
-  ) {
-    return service.generateImage(req.getPrompt());
+  public ImageGenResponse generateImage(@RequestBody ImageGenRequest req)
+      throws Exception {
+    return service.generateImageWithGeminiFlashImage(req.getPrompt());
   }
-
 }
 

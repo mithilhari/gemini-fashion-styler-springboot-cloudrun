@@ -2,8 +2,8 @@ package com.example.demo.fashion;
 
 public class ImageGenResponse {
 
-  private String mimeType;
-  private String base64;
+  private final String mimeType;
+  private final String base64;
 
   public ImageGenResponse(String mimeType, String base64) {
     this.mimeType = mimeType;
