@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fashion Styler (Gemini)</title>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
+    .wrap { max-width: 1080px; margin: 0 auto; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+    .col { flex: 1 1 360px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin-top: 16px; }
+    label { display:block; font-size: 14px; color:#444; margin: 10px 0 6px; }
+    input, select, textarea, button { font: inherit; }
+    textarea { width: 100%; min-height: 88px; padding: 10px; }
+    input[type="text"], select { width: 100%; padding: 10px; }
+    input[type="file"] { width: 100%; }
+    button { padding: 10px 14px; cursor: pointer; }
+    .muted { color:#666; font-size: 14px; }
+    .danger { color:#b00020; }
+    .ok { color:#0a7a0a; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; white-space: pre-wrap; }
+    img { max-width: 100%; border-radius: 10px; border: 1px solid #eee; }
+    ul { margin: 8px 0 0 18px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Fashion Styler (Gemini)</h1>
+  <p class="muted">
+    Upload a photo → get simple styling improvements → generate an updated outfit image (base64 JSON returned).
+  </p>
+
+  <div class="card">
+    <h3>Upload requirements</h3>
+    <ul class="muted">
+      <li>JPG / PNG / WEBP only</li>
+      <li>Max 8 MB</li>
+      <li>Best results: good lighting, full outfit visible, minimal filters</li>
+    </ul>
+  </div>
+
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <h3>1) Upload a photo</h3>
+
+        <label for="file">Image</label>
+        <input id="file" type="file" accept="image/jpeg,image/png,image/webp" />
+
+        <label for="occasion">Occasion</label>
+        <select id="occasion">
+          <option value="everyday">Everyday</option>
+          <option value="business casual">Business casual</option>
+          <option value="formal">Formal</option>
+          <option value="date night">Date night</option>
+          <option value="wedding guest">Wedding guest</option>
+          <option value="streetwear">Streetwear</option>
+        </select>
+
+        <label for="vibe">Vibe</label>
+        <select id="vibe">
+          <option value="clean, modern">Clean / modern</option>
+          <option value="minimalist">Minimalist</option>
+          <option value="classic timeless">Classic / timeless</option>
+          <option value="athleisure">Athleisure</option>
+          <option value="edgy">Edgy</option>
+          <option value="colorful">Colorful</option>
+        </select>
+
+        <label for="aspectRatio">Output aspect ratio (optional)</label>
+        <select id="aspectRatio">
+          <option value="">Preserve input (recommended)</option>
+          <option value="1:1">1:1</option>
+          <option value="16:9">16:9</option>
+          <option value="9:16">9:16</option>
+          <option value="4:3">4:3</option>
+          <option value="3:2">3:2</option>
+          <option value="3:4">3:4</option>
+          <option value="2:3">2:3</option>
+          <option value="5:4">5:4</option>
+          <option value="4:5">4:5</option>
+          <option value="21:9">21:9</option>
+        </select>
+
+        <label for="notes">Notes (optional)</label>
+        <textarea id="notes" placeholder="Example: prefer neutral colors; no hats; keep sneakers; budget-friendly suggestions."></textarea>
+
+        <div class="row" style="margin-top:10px; align-items:center;">
+          <button id="go">Generate suggestions + image</button>
+
+          <div style="flex:1; min-width:220px;">
+            <div class="muted" id="status"></div>
+            <progress id="bar" value="0" max="100" style="width:100%; height:14px;"></progress>
+          </div>
+        </div>
+
+        <div id="err" class="danger" style="display:none; margin-top:10px;"></div>
+      </div>
+
+      <div class="card">
+        <h3>Original preview</h3>
+        <img id="preview" alt="Upload an image to preview it" />
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card">
+        <h3>2) Styling suggestions</h3>
+        <div class="muted">Observations</div>
+        <div id="obs" class="mono"></div>
+
+        <div style="margin-top:10px;" class="muted">Quick wins</div>
+        <ul id="fixes"></ul>
+      </div>
+
+      <div class="card">
+        <h3>3) Prompt used to generate the edited look</h3>
+        <div id="promptUsed" class="mono"></div>
+      </div>
+
+      <div class="card">
+        <h3>4) Generated result</h3>
+        <img id="out" alt="Generated image will appear here" />
+        <details style="margin-top:10px;">
+          <summary class="muted">Show base64 JSON</summary>
+          <div id="json" class="mono"></div>
+        </details>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function setProgress(pct, msg) {
+    $("bar").value = Math.max(0, Math.min(100, pct));
+    $("status").textContent = msg || "";
+  }
+
+  function resetProgress() {
+    $("bar").value = 0;
+    $("status").textContent = "";
+  }
+
+  function showError(msg) {
+    const el = $("err");
+    el.style.display = msg ? "block" : "none";
+    el.textContent = msg || "";
+  }
+
+  $("file").addEventListener("change", () => {
+    showError("");
+    const f = $("file").files?.[0];
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    $("preview").src = url;
+  });
+
+  function renderResult(data) {
+    $("obs").textContent = data.observations || "";
+    $("promptUsed").textContent = data.promptUsed || "";
+
+    const fixes = $("fixes");
+    fixes.innerHTML = "";
+    (data.quickFixes || []).forEach(x => {
+      const li = document.createElement("li");
+      li.textContent = x;
+      fixes.appendChild(li);
+    });
+
+    $("json").textContent = JSON.stringify(data, null, 2);
+
+    if (data.base64 && data.mimeType) {
+      $("out").src = `data:${data.mimeType};base64,${data.base64}`;
+    } else {
+      $("out").removeAttribute("src");
+    }
+  }
+
+  $("go").addEventListener("click", async () => {
+    showError("");
+    setProgress(5, "Validating image…");
+
+    const f = $("file").files?.[0];
+    if (!f) {
+      resetProgress();
+      showError("Please upload an image.");
+      return;
+    }
+
+    // Client-side checks
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(f.type)) {
+      resetProgress();
+      showError("Unsupported file type. Use JPG, PNG, or WEBP.");
+      return;
+    }
+    if (f.size > 8 * 1024 * 1024) {
+      resetProgress();
+      showError("Image too large. Max 8MB.");
+      return;
+    }
+
+    setProgress(15, "Uploading…");
+
+    const fd = new FormData();
+    fd.append("image", f);
+    fd.append("occasion", $("occasion").value);
+    fd.append("vibe", $("vibe").value);
+    fd.append("notes", $("notes").value || "");
+    fd.append("aspectRatio", $("aspectRatio").value || "");
+
+    try {
+      setProgress(35, "Analyzing outfit + generating suggestions…");
+      const resp = await fetch("/api/fashion/style", { method: "POST", body: fd });
+
+      setProgress(70, "Generating edited image…");
+      const text = await resp.text();
+      let json;
+      try { json = JSON.parse(text); } catch { json = { error: text }; }
+
+      if (!resp.ok) {
+        throw new Error(json?.message || json?.error || text || `HTTP ${resp.status}`);
+      }
+
+      renderResult(json);
+      setProgress(100, "Done ✅");
+    } catch (e) {
+      resetProgress();
+      showError(e.message || String(e));
+    }
+  });
+</script>
+</body>
+</html>
