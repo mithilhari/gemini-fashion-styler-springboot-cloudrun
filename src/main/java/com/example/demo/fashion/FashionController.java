@@ -8,24 +8,25 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/fashion")
 public class FashionController {
 
-  private final FashionService fashionService;
+  private final FashionService service;
 
-  public FashionController(FashionService fashionService) {
-    this.fashionService = fashionService;
+  public FashionController(FashionService service) {
+    this.service = service;
   }
 
   @PostMapping(
-      value = "/style",
+      path = "/style",
       consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE
   )
-  public FashionService.FashionResponse style(
+  public FashionResponse style(
       @RequestPart("image") MultipartFile image,
-      @RequestParam(value = "occasion", required = false) String occasion,
-      @RequestParam(value = "vibe", required = false) String vibe,
-      @RequestParam(value = "notes", required = false) String notes,
-      @RequestParam(value = "aspectRatio", required = false) String aspectRatio
-  ) {
-    return fashionService.suggestAndGenerate(image, occasion, vibe, notes, aspectRatio);
+      @RequestPart(required = false) String occasion,
+      @RequestPart(required = false) String vibe,
+      @RequestPart(required = false) String notes
+  ) throws Exception {
+
+    return service.style(image, occasion, vibe, notes);
   }
 }
+

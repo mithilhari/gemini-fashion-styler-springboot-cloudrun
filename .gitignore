@@ -1,4 +1,4 @@
-# Java build files
+
 target/
 *.class
 
@@ -9,3 +9,9 @@ target/
 
 # OS
 .DS_Store
+
+# MVN
+.mvn/*
+mvnw
+mvnw.cmd
+mvn
