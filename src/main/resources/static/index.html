@@ -23,23 +23,8 @@
       box-shadow: 0 6px 24px rgba(0,0,0,0.06);
     }
 
-    h1 {
-      margin-top: 0;
-      font-size: 1.8rem;
-    }
-
-    h2 {
-      margin-top: 28px;
-      font-size: 1.2rem;
-      border-bottom: 1px solid #eee;
-      padding-bottom: 6px;
-    }
-
-    p.hint {
-      font-size: 0.9rem;
-      color: #666;
-      margin-top: 4px;
-    }
+    h1 { font-size: 1.8rem; margin-top: 0; }
+    h2 { margin-top: 28px; font-size: 1.2rem; }
 
     input, textarea, button {
       width: 100%;
@@ -50,10 +35,7 @@
       border: 1px solid #ccc;
     }
 
-    textarea {
-      resize: vertical;
-      min-height: 100px;
-    }
+    textarea { resize: vertical; min-height: 100px; }
 
     button {
       background: #111;
@@ -73,19 +55,10 @@
       cursor: not-allowed;
     }
 
-    ul {
-      padding-left: 20px;
-    }
+    .hidden { display: none; }
 
-    li {
-      margin-bottom: 6px;
-    }
-
-    .status {
-      margin-top: 12px;
-      font-size: 0.95rem;
-      color: #444;
-    }
+    ul { padding-left: 20px; }
+    li { margin-bottom: 6px; }
 
     img {
       max-width: 100%;
@@ -93,12 +66,26 @@
       margin-top: 16px;
     }
 
-    .step {
-      margin-top: 24px;
+    /* 🔄 Spinner */
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid #ddd;
+      border-top-color: #111;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 12px auto;
     }
 
-    .hidden {
-      display: none;
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .status {
+      text-align: center;
+      font-size: 0.95rem;
+      color: #444;
+      margin-top: 8px;
     }
   </style>
 </head>
@@ -107,51 +94,45 @@
 <div class="container">
 
   <h1>👗 Gemini Fashion Styler</h1>
-  <p class="hint">
-    Upload a photo, get styling suggestions, then generate an improved look.
-  </p>
 
   <!-- STEP 1 -->
-  <div class="step">
-    <h2>1️⃣ Upload your outfit</h2>
-    <input type="file" id="img" accept="image/*"/>
-  </div>
+  <h2>1️⃣ Upload your outfit</h2>
+  <input type="file" id="img" accept="image/*"/>
 
   <!-- STEP 2 -->
-  <div class="step">
-    <h2>2️⃣ Context (optional)</h2>
-    <input id="occasion" placeholder="Occasion (e.g. work, wedding, date)"/>
-    <input id="vibe" placeholder="Vibe (e.g. minimalist, bold, elegant)"/>
-    <input id="notes" placeholder="Extra notes (optional)"/>
+  <h2>2️⃣ Context (optional)</h2>
+  <input id="occasion" placeholder="Occasion (e.g. work, wedding)"/>
+  <input id="vibe" placeholder="Vibe (e.g. minimalist, bold)"/>
+  <input id="notes" placeholder="Extra notes"/>
 
-    <button id="analyzeBtn">Analyze Outfit</button>
-    <div id="status" class="status"></div>
+  <button id="analyzeBtn">Analyze Outfit</button>
+
+  <div id="analyzeLoading" class="hidden">
+    <div class="spinner"></div>
+    <div class="status">Analyzing outfit…</div>
   </div>
 
   <!-- STEP 3 -->
-  <div class="step hidden" id="analysisSection">
+  <div id="analysisSection" class="hidden">
     <h2>3️⃣ Styling advice</h2>
-
-    <strong>What we see</strong>
     <p id="obs"></p>
-
-    <strong>Quick improvements</strong>
     <ul id="fixes"></ul>
   </div>
 
   <!-- STEP 4 -->
-  <div class="step hidden" id="promptSection">
-    <h2>4️⃣ Suggested image prompt</h2>
-    <p class="hint">
-      You can edit this before generating the image.
-    </p>
-
+  <div id="promptSection" class="hidden">
+    <h2>4️⃣ Image prompt</h2>
     <textarea id="prompt"></textarea>
     <button id="genBtn">Generate Styled Image</button>
+
+    <div id="genLoading" class="hidden">
+      <div class="spinner"></div>
+      <div class="status">Generating image…</div>
+    </div>
   </div>
 
   <!-- STEP 5 -->
-  <div class="step hidden" id="imageSection">
+  <div id="imageSection" class="hidden">
     <h2>5️⃣ Generated look</h2>
     <img id="out"/>
   </div>
@@ -159,27 +140,23 @@
 </div>
 
 <script>
-let currentPrompt = "";
-
 const analyzeBtn = document.getElementById("analyzeBtn");
 const genBtn = document.getElementById("genBtn");
-const status = document.getElementById("status");
 
 analyzeBtn.addEventListener("click", analyze);
 genBtn.addEventListener("click", generateImage);
 
 async function analyze() {
-  const file = img.files[0];
-  if (!file) {
+  if (!img.files[0]) {
     alert("Please upload an image.");
     return;
   }
 
-  status.textContent = "Analyzing outfit...";
   analyzeBtn.disabled = true;
+  document.getElementById("analyzeLoading").classList.remove("hidden");
 
   const fd = new FormData();
-  fd.append("image", file);
+  fd.append("image", img.files[0]);
   fd.append("occasion", occasion.value);
   fd.append("vibe", vibe.value);
   fd.append("notes", notes.value);
@@ -190,14 +167,14 @@ async function analyze() {
   });
 
   analyzeBtn.disabled = false;
+  document.getElementById("analyzeLoading").classList.add("hidden");
 
   if (!res.ok) {
-    status.textContent = "Error analyzing image.";
+    alert("Analysis failed.");
     return;
   }
 
   const data = await res.json();
-  status.textContent = "";
 
   document.getElementById("analysisSection").classList.remove("hidden");
   document.getElementById("promptSection").classList.remove("hidden");
@@ -210,8 +187,7 @@ async function analyze() {
     fixes.appendChild(li);
   });
 
-  currentPrompt = data.imagePrompt || "";
-  prompt.value = currentPrompt;
+  prompt.value = data.imagePrompt || "";
 }
 
 async function generateImage() {
@@ -221,8 +197,8 @@ async function generateImage() {
     return;
   }
 
-  status.textContent = "Generating image...";
   genBtn.disabled = true;
+  document.getElementById("genLoading").classList.remove("hidden");
 
   const res = await fetch("/api/fashion/generate-image", {
     method: "POST",
@@ -231,15 +207,14 @@ async function generateImage() {
   });
 
   genBtn.disabled = false;
+  document.getElementById("genLoading").classList.add("hidden");
 
   if (!res.ok) {
-    status.textContent = "Image generation failed.";
+    alert("Image generation failed.");
     return;
   }
 
   const data = await res.json();
-  status.textContent = "";
-
   document.getElementById("imageSection").classList.remove("hidden");
   out.src = `data:${data.mimeType || "image/png"};base64,${data.base64}`;
 }
