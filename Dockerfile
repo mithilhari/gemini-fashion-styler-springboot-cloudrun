@@ -1,15 +1,16 @@
-# Use official Java 21 runtime
+# ---------- Build stage ----------
+FROM maven:3.9.9-eclipse-temurin-21 AS build
+WORKDIR /build
+COPY pom.xml .
+COPY src ./src
+RUN mvn clean package -DskipTests
+
+# ---------- Runtime stage ----------
 FROM eclipse-temurin:21-jre
-
 WORKDIR /app
+COPY --from=build /build/target/*.jar app.jar
 
-# Copy Maven build
-COPY target/*.jar app.jar
-
-# Cloud Run uses PORT env var
 ENV PORT=8080
-
 EXPOSE 8080
-
 ENTRYPOINT ["java","-jar","/app/app.jar"]
 
