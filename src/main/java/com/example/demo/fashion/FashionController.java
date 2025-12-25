@@ -1,6 +1,6 @@
 package com.example.demo.fashion;
 
-import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -8,34 +8,23 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/fashion")
 public class FashionController {
 
-  private final FashionService service;
+    private final FashionService fashionService;
 
-  public FashionController(FashionService service) {
-    this.service = service;
-  }
+    public FashionController(FashionService fashionService) {
+        this.fashionService = fashionService;
+    }
 
-  @PostMapping(
-      path = "/style",
-      consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
-      produces = MediaType.APPLICATION_JSON_VALUE
-  )
-  public FashionResponse style(
-      @RequestPart("image") MultipartFile image,
-      @RequestPart(required = false) String occasion,
-      @RequestPart(required = false) String vibe,
-      @RequestPart(required = false) String notes
-  ) throws Exception {
-    return service.style(image, occasion, vibe, notes);
-  }
-
-  @PostMapping(
-      path = "/generate-image",
-      consumes = MediaType.APPLICATION_JSON_VALUE,
-      produces = MediaType.APPLICATION_JSON_VALUE
-  )
-  public ImageGenResponse generateImage(@RequestBody ImageGenRequest req)
-      throws Exception {
-    return service.generateImageWithGeminiFlashImage(req.getPrompt());
-  }
+    @PostMapping("/style")
+    public ResponseEntity<?> style(
+            @RequestParam MultipartFile image,
+            @RequestParam String gender,
+            @RequestParam String occasion,
+            @RequestParam String season,
+            @RequestParam String vibe
+    ) {
+        return ResponseEntity.ok(
+                fashionService.style(image, gender, occasion, season, vibe)
+        );
+    }
 }
 

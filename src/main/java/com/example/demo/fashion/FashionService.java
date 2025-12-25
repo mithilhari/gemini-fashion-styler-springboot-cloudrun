@@ -1,184 +1,80 @@
 package com.example.demo.fashion;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.auth.oauth2.GoogleCredentials;
-
+import com.google.genai.Client;
+import com.google.genai.types.GenerateContentResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 
 @Service
 public class FashionService {
 
-  private static final String REGION = "us-central1";
-  private final ObjectMapper mapper = new ObjectMapper();
+    private static final int MAX_PROMPT_CHARS = 100_000;
 
-  // -------------------------------
-  // STEP 1–3: ANALYSIS (Gemini Flash)
-  // -------------------------------
-  public FashionResponse style(
-      MultipartFile image,
-      String occasion,
-      String vibe,
-      String notes
-  ) throws Exception {
+    private final Client geminiClient;
 
-    byte[] imageBytes = image.getBytes();
-    String imageBase64 = java.util.Base64.getEncoder().encodeToString(imageBytes);
-
-    String prompt = """
-Return ONLY valid JSON:
-{
-  "observations": "string",
-  "quickFixes": ["string"],
-  "imagePrompt": "string"
-}
-
-Rules:
-- No markdown
-- No commentary
-- No identity inference
-- Describe visible clothing only
-
-Occasion: %s
-Vibe: %s
-Notes: %s
-""".formatted(
-        safe(occasion),
-        safe(vibe),
-        safe(notes)
-    );
-
-    String body = """
-{
-  "contents": [
-    {
-      "role": "user",
-      "parts": [
-        {
-          "inlineData": {
-            "mimeType": "%s",
-            "data": "%s"
-          }
-        },
-        { "text": "%s" }
-      ]
+    public FashionService(Client geminiClient) {
+        this.geminiClient = geminiClient;
     }
-  ]
-}
-""".formatted(
-        image.getContentType(),
-        imageBase64,
-        escape(prompt)
-    );
 
-    JsonNode response =
-        callVertex(
-            "gemini-2.5-flash:generateContent",
-            body
+    public String style(
+            MultipartFile image,
+            String gender,
+            String occasion,
+            String season,
+            String vibe
+    ) {
+        // ❌ DO NOT READ IMAGE BYTES INTO PROMPT
+        // ❌ DO NOT BASE64 ENCODE IMAGE
+
+        String prompt = """
+        You are a professional fashion stylist.
+
+        Based on the following user preferences, suggest a complete outfit.
+
+        Gender: %s
+        Occasion: %s
+        Season: %s
+        Vibe: %s
+
+        Respond with:
+        1. Outfit description
+        2. Colors
+        3. Accessories
+        4. Footwear
+        """.formatted(
+                safe(gender),
+                safe(occasion),
+                safe(season),
+                safe(vibe)
         );
 
-    String text =
-        response.at("/candidates/0/content/parts/0/text").asText();
+        prompt = clampPrompt(prompt);
 
-    FashionAdvice advice =
-        mapper.readValue(clean(text), FashionAdvice.class);
+        GenerateContentResponse response =
+                geminiClient.models.generateContent(
+                        "gemini-2.0-flash",
+                        prompt,
+                        null
+                );
 
-    return new FashionResponse(
-        advice.getObservations(),
-        advice.getQuickFixes().toArray(String[]::new),
-        advice.getImagePrompt()
-    );
-  }
+        String text = response.text();
 
-  // -----------------------------------------
-  // STEP 4: IMAGE GENERATION (Flash Image 2.5)
-  // -----------------------------------------
-  public ImageGenResponse generateImageWithGeminiFlashImage(String prompt)
-      throws Exception {
+        if (text == null || text.isBlank()) {
+            throw new RuntimeException("Gemini returned no text output");
+        }
 
-    String body = """
-{
-  "contents": [
-    {
-      "role": "user",
-      "parts": [
-        { "text": "%s" }
-      ]
-    }
-  ]
-}
-""".formatted(escape(prompt));
-
-    JsonNode response =
-        callVertex(
-            "gemini-2.5-flash-image:generateContent",
-            body
-        );
-
-    JsonNode inline =
-        response.at("/candidates/0/content/parts/0/inlineData");
-
-    if (inline.isMissingNode()) {
-      throw new RuntimeException("Gemini image generation failed");
+        return text;
     }
 
-    return new ImageGenResponse(
-        inline.get("mimeType").asText(),
-        inline.get("data").asText()
-    );
-  }
+    private String clampPrompt(String prompt) {
+        if (prompt.length() > MAX_PROMPT_CHARS) {
+            return prompt.substring(0, MAX_PROMPT_CHARS);
+        }
+        return prompt;
+    }
 
-  // -------------------------------
-  // Vertex AI REST helper
-  // -------------------------------
-  private JsonNode callVertex(String method, String body)
-      throws Exception {
-
-    String token =
-        GoogleCredentials.getApplicationDefault()
-            .refreshAccessToken()
-            .getTokenValue();
-
-    HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(
-            "https://" + REGION +
-            "-aiplatform.googleapis.com/v1/models/" + method))
-        .header("Authorization", "Bearer " + token)
-        .header("Content-Type", "application/json")
-        .POST(HttpRequest.BodyPublishers.ofString(body))
-        .build();
-
-    HttpResponse<String> response =
-        HttpClient.newHttpClient()
-            .send(request, HttpResponse.BodyHandlers.ofString());
-
-    return mapper.readTree(response.body());
-  }
-
-  // -------------------------------
-  // Helpers
-  // -------------------------------
-  private String clean(String raw) {
-    raw = raw.replace("```json", "")
-             .replace("```", "")
-             .trim();
-    int a = raw.indexOf('{');
-    int b = raw.lastIndexOf('}');
-    return raw.substring(a, b + 1);
-  }
-
-  private String escape(String s) {
-    return s.replace("\"", "\\\"");
-  }
-
-  private String safe(String s) {
-    return s == null ? "" : s;
-  }
+    private String safe(String value) {
+        return value == null ? "unspecified" : value.trim();
+    }
 }
 
