@@ -17,9 +17,9 @@ public class FashionController {
     @PostMapping("/style")
     public ResponseEntity<?> style(
             @RequestParam MultipartFile image,
-            @RequestParam String gender,
+            @RequestParam(value = "gender", required = false) String gender,
             @RequestParam String occasion,
-            @RequestParam String season,
+            @RequestParam(value = "season", required = false) String season,
             @RequestParam String vibe
     ) {
         return ResponseEntity.ok(
