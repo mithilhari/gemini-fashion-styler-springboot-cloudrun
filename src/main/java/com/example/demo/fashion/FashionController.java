@@ -1,30 +1,51 @@
 package com.example.demo.fashion;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
-@RequestMapping("/api/fashion")
+@RequestMapping("/fashion")
 public class FashionController {
 
-    private final FashionService fashionService;
+    private final FashionImageService fashionImageService;
+    private final GeminiTextService geminiTextService;
 
-    public FashionController(FashionService fashionService) {
-        this.fashionService = fashionService;
-    }
-
-    @PostMapping("/style")
-    public ResponseEntity<?> style(
-            @RequestParam MultipartFile image,
-            @RequestParam(value = "gender", required = false) String gender,
-            @RequestParam String occasion,
-            @RequestParam(value = "season", required = false) String season,
-            @RequestParam String vibe
+    public FashionController(
+            FashionImageService fashionImageService,
+            GeminiTextService geminiTextService
     ) {
-        return ResponseEntity.ok(
-                fashionService.style(image, gender, occasion, season, vibe)
-        );
+        this.fashionImageService = fashionImageService;
+        this.geminiTextService = geminiTextService;
     }
+
+    @PostMapping(
+            value = "/style",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<?> styleFashion(
+            @RequestPart("image") MultipartFile image,
+            @RequestParam(defaultValue = "unisex") String gender,
+            @RequestParam(defaultValue = "all") String season,
+            @RequestParam(required = false) String occasion,
+            @RequestParam(required = false) String weather
+    ) throws Exception {
+
+        String fashionText =
+                geminiTextService.generateFashionAdvice(
+                        gender, season, occasion, weather
+                );
+
+        FashionImageService.StyledImageResult result =
+                fashionImageService.styleImage(
+                        image, fashionText, gender, season, occasion, weather
+                );
+
+        return ResponseEntity.ok(result);
+    }
+
 }
 
