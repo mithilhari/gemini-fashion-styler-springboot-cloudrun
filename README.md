@@ -16,7 +16,7 @@ This project is a Spring Boot application deployed to Google Cloud Run. It provi
 ## Running locally
 
 ```
-export GOOGLE_API_KEY=YOUR_KEY
+export GEMINI_API_KEY=YOUR_KEY
 mvn spring-boot:run
 ```
 
