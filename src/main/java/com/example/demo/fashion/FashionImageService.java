@@ -20,7 +20,7 @@ public class FashionImageService {
     private static final String LOCATION = "us-central1";
 
     private static final String IMAGEN_ENDPOINT =
-            "https://us-central1-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/imagen-3.0-edit-001:predict";
+        "https://us-central1-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/imagen-2.0-edit-001:predict";
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
@@ -68,10 +68,21 @@ public class FashionImageService {
         HttpResponse<String> response =
                 httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
+        System.out.println("IMAGEN STATUS: " + response.statusCode());
+        System.out.println("IMAGEN RESPONSE BODY:");
+        System.out.println(response.body());
+
         JsonNode root = mapper.readTree(response.body());
 
+        if (!root.has("predictions")) {
+            throw new RuntimeException(
+                "Imagen error response: " + response.body()
+            );
+        }
+
         String styledImageBase64 =
-                root.at("/predictions/0/bytesBase64Encoded").asText();
+            root.at("/predictions/0/bytesBase64Encoded").asText();
+
 
         return new StyledImageResult(styledImageBase64, fashionText);
     }

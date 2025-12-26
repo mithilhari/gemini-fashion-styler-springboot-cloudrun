@@ -18,7 +18,8 @@ public class GeminiTextService {
     private static final String LOCATION = "us-central1";
 
     private static final String GEMINI_ENDPOINT =
-            "https://us-central1-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/gemini-1.5-pro:generateContent";
+        "https://generativelanguage.googleapis.com/v1/models/gemini-1.0-pro:generateContent";
+
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -59,12 +60,18 @@ public class GeminiTextService {
                         ))
                         .header("Authorization", "Bearer " + accessToken)
                         .header("Content-Type", "application/json")
+                        .header("x-goog-api-key", System.getenv("GEMINI_API_KEY"))
                         .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                         .build();
 
         HttpResponse<String> response =
                 HttpClient.newHttpClient()
                         .send(request, HttpResponse.BodyHandlers.ofString());
+
+        System.out.println("GEMINI STATUS: " + response.statusCode());
+        System.out.println("GEMINI RESPONSE BODY:");
+        System.out.println(response.body());
+
 
         JsonNode root = mapper.readTree(response.body());
 
