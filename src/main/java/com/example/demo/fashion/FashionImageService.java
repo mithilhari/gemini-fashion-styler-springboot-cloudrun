@@ -1,139 +1,80 @@
 package com.example.demo.fashion;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.util.Base64;
+import java.util.*;
 
 @Service
 public class FashionImageService {
 
-    private static final String PROJECT_ID =
-            System.getenv("GOOGLE_CLOUD_PROJECT");
+    @Value("${spring.cloud.gcp.project-id}")
+    private String projectId;
 
-    private static final String LOCATION = "us-central1";
+    private final String location = "us-central1";
 
-    private static final String IMAGEN_ENDPOINT =
-        "https://us-central1-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/imagen-3.0-generate-001:predict";
+    // Data structure for the response
+    public record StyledImageResult(String base64Image, String description) {}
 
-    private final ObjectMapper mapper = new ObjectMapper();
-    private final HttpClient httpClient = HttpClient.newHttpClient();
-
-    public StyledImageResult styleImage(
-            MultipartFile image,
-            String fashionText,
-            String gender,
-            String season,
-            String occasion,
-            String weather
-    ) throws Exception {
-
-        String prompt = buildPrompt(
-                fashionText, gender, season, occasion, weather
-        );
-
-        String base64Image =
-                Base64.getEncoder().encodeToString(image.getBytes());
-
-        String requestBody = """
-        {
-          "instances": [{
-            "prompt": "%s",
-            "image": {
-              "bytesBase64Encoded": "%s"
-            }
-          }],
-          "parameters": {
-            "sampleCount": 1
-          }
+    public StyledImageResult styleImage(MultipartFile file, String occasion, String style, String color, String season, String additionalPrompt) {
+        
+        if (projectId == null || projectId.isEmpty() || projectId.contains("your-project-id")) {
+            throw new RuntimeException("Project ID is not configured in application.properties!");
         }
-        """.formatted(escape(prompt), base64Image);
 
-        HttpRequest request =
-                HttpRequest.newBuilder()
-                        .uri(URI.create(
-                                IMAGEN_ENDPOINT.formatted(PROJECT_ID, LOCATION)
-                        ))
-                        .header("Authorization", "Bearer " + fetchAccessToken())
-                        .header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                        .build();
+        try {
+            // 1. Convert MultipartFile to Base64 string
+            byte[] imageBytes = file.getBytes();
+            String base64Image = Base64.getEncoder().encodeToString(imageBytes);
 
-        HttpResponse<String> response =
-                httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        System.out.println("IMAGEN STATUS: " + response.statusCode());
-        System.out.println("IMAGEN RESPONSE BODY:");
-        System.out.println(response.body());
-
-        JsonNode root = mapper.readTree(response.body());
-
-        if (!root.has("predictions")) {
-            throw new RuntimeException(
-                "Imagen error response: " + response.body()
+            // 2. Build the AI Generation Prompt
+            String fullPrompt = String.format(
+                "A professional fashion photo of a person wearing an outfit styled for a %s occasion. " +
+                "The style should be %s, with a %s color palette, suitable for %s weather. %s",
+                occasion, style, color, season, (additionalPrompt != null ? additionalPrompt : "")
             );
+
+            // 3. Prepare the REST Request for Vertex AI (Imagen)
+            RestTemplate restTemplate = new RestTemplate();
+            String url = String.format(
+                "https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/imagegeneration@006:predict",
+                location, projectId, location
+            );
+
+            Map<String, Object> requestBody = new HashMap<>();
+            Map<String, Object> instance = new HashMap<>();
+            instance.put("prompt", fullPrompt);
+            
+            Map<String, String> imageInput = new HashMap<>();
+            imageInput.put("bytesBase64Encoded", base64Image);
+            instance.put("image", imageInput);
+
+            requestBody.put("instances", Collections.singletonList(instance));
+            
+            Map<String, Object> parameters = new HashMap<>();
+            parameters.put("sampleCount", 1);
+            requestBody.put("parameters", parameters);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            // Note: Ensure 'gcloud auth application-default login' was run locally
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+            // 4. Execute API Call
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
+            
+            // 5. Parse Response
+            List<Map<String, String>> predictions = (List<Map<String, String>>) response.getBody().get("predictions");
+            String outputBase64 = predictions.get(0).get("bytesBase64Encoded");
+
+            return new StyledImageResult(outputBase64, "Successfully styled for " + occasion);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process fashion styling: " + e.getMessage(), e);
         }
-
-        String styledImageBase64 =
-            root.at("/predictions/0/bytesBase64Encoded").asText();
-
-
-        return new StyledImageResult(styledImageBase64, fashionText);
     }
-
-    private String buildPrompt(
-            String fashionText,
-            String gender,
-            String season,
-            String occasion,
-            String weather
-    ) {
-        return """
-        Keep the same person, face, body type, and pose.
-        Modify ONLY the clothing and accessories.
-
-        Fashion guidance:
-        %s
-
-        Context:
-        Gender: %s
-        Season: %s
-        Occasion: %s
-        Weather: %s
-
-        Requirements:
-        - Photorealistic
-        - Editorial fashion quality
-        - Realistic fabrics
-        - Natural lighting
-        - No face or body changes
-        """.formatted(
-                fashionText, gender, season, occasion, weather
-        );
-    }
-
-    private String fetchAccessToken() throws Exception {
-        Process process = new ProcessBuilder(
-                "gcloud", "auth", "print-access-token"
-        ).start();
-
-        return new String(process.getInputStream().readAllBytes()).trim();
-    }
-
-    private String escape(String s) {
-        return s.replace("\"", "\\\"");
-    }
-
-    // DTO returned to controller
-    public record StyledImageResult(
-            String imageBase64,
-            String fashionText
-    ) {}
 }
-
