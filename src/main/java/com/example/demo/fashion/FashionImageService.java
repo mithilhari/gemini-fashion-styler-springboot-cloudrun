@@ -20,7 +20,7 @@ public class FashionImageService {
     private static final String LOCATION = "us-central1";
 
     private static final String IMAGEN_ENDPOINT =
-        "https://us-central1-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/imagen-2.0-edit-001:predict";
+        "https://us-central1-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/imagen-3.0-generate-001:predict";
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
