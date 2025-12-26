@@ -1,26 +1,29 @@
 package com.example.demo.fashion;
 
-import com.google.cloud.vertexai.VertexAI;
-import com.google.cloud.vertexai.api.GenerateImagesRequest;
-import com.google.cloud.vertexai.api.Image;
-import com.google.cloud.vertexai.api.ImagePrompt;
-import com.google.cloud.vertexai.api.ImageSeed;
-import com.google.cloud.vertexai.api.ImageSource;
-import com.google.cloud.vertexai.api.PredictResponse;
-import com.google.cloud.vertexai.generativeai.ImageGenerationModel;
-
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.Base64;
-import java.util.List;
 
 @Service
 public class FashionImageService {
 
-    private static final String PROJECT_ID = System.getenv("GOOGLE_CLOUD_PROJECT");
+    private static final String PROJECT_ID =
+            System.getenv("GOOGLE_CLOUD_PROJECT");
+
     private static final String LOCATION = "us-central1";
-    private static final String MODEL = "imagen-3.0-edit-001";
+
+    private static final String IMAGEN_ENDPOINT =
+            "https://us-central1-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/imagen-3.0-edit-001:predict";
+
+    private final ObjectMapper mapper = new ObjectMapper();
+    private final HttpClient httpClient = HttpClient.newHttpClient();
 
     public StyledImageResult styleImage(
             MultipartFile image,
@@ -31,58 +34,49 @@ public class FashionImageService {
             String weather
     ) throws Exception {
 
-        // 1️⃣ Build image prompt
-        String prompt = buildImagePrompt(
+        String prompt = buildPrompt(
                 fashionText, gender, season, occasion, weather
         );
 
-        // 2️⃣ Prepare source image
-        ImageSource sourceImage =
-                ImageSource.newBuilder()
-                        .setBytes(image.getBytes())
-                        .build();
+        String base64Image =
+                Base64.getEncoder().encodeToString(image.getBytes());
 
-        ImagePrompt imagePrompt =
-                ImagePrompt.newBuilder()
-                        .setPrompt(prompt)
-                        .addImage(sourceImage)
-                        .build();
-
-        // 3️⃣ Call Vertex AI Imagen
-        try (VertexAI vertexAI = new VertexAI(PROJECT_ID, LOCATION)) {
-
-            ImageGenerationModel model =
-                    new ImageGenerationModel(MODEL, vertexAI);
-
-            PredictResponse response =
-                    model.generateImages(
-                            GenerateImagesRequest.newBuilder()
-                                    .addImagePrompts(imagePrompt)
-                                    .setSampleCount(1)
-                                    .build()
-                    );
-
-            Image generated =
-                    response.getPredictions(0)
-                            .getStructValue()
-                            .getFieldsOrThrow("bytesBase64Encoded")
-                            .getStringValue()
-                            .isEmpty()
-                            ? null
-                            : null;
-
-            // Imagen SDK returns base64 directly
-            String base64Image =
-                    response.getPredictions(0)
-                            .getStructValue()
-                            .getFieldsOrThrow("bytesBase64Encoded")
-                            .getStringValue();
-
-            return new StyledImageResult(base64Image, fashionText);
+        String requestBody = """
+        {
+          "instances": [{
+            "prompt": "%s",
+            "image": {
+              "bytesBase64Encoded": "%s"
+            }
+          }],
+          "parameters": {
+            "sampleCount": 1
+          }
         }
+        """.formatted(escape(prompt), base64Image);
+
+        HttpRequest request =
+                HttpRequest.newBuilder()
+                        .uri(URI.create(
+                                IMAGEN_ENDPOINT.formatted(PROJECT_ID, LOCATION)
+                        ))
+                        .header("Authorization", "Bearer " + fetchAccessToken())
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                        .build();
+
+        HttpResponse<String> response =
+                httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        JsonNode root = mapper.readTree(response.body());
+
+        String styledImageBase64 =
+                root.at("/predictions/0/bytesBase64Encoded").asText();
+
+        return new StyledImageResult(styledImageBase64, fashionText);
     }
 
-    private String buildImagePrompt(
+    private String buildPrompt(
             String fashionText,
             String gender,
             String season,
@@ -91,8 +85,9 @@ public class FashionImageService {
     ) {
         return """
         Keep the same person, face, body type, and pose.
-        Update the outfit according to this fashion guidance:
+        Modify ONLY the clothing and accessories.
 
+        Fashion guidance:
         %s
 
         Context:
@@ -101,18 +96,30 @@ public class FashionImageService {
         Occasion: %s
         Weather: %s
 
-        Style rules:
+        Requirements:
         - Photorealistic
-        - Fashion editorial quality
-        - Realistic fabric textures
+        - Editorial fashion quality
+        - Realistic fabrics
         - Natural lighting
-        - Subtle, believable outfit changes
+        - No face or body changes
         """.formatted(
                 fashionText, gender, season, occasion, weather
         );
     }
 
-    // Simple DTO
+    private String fetchAccessToken() throws Exception {
+        Process process = new ProcessBuilder(
+                "gcloud", "auth", "print-access-token"
+        ).start();
+
+        return new String(process.getInputStream().readAllBytes()).trim();
+    }
+
+    private String escape(String s) {
+        return s.replace("\"", "\\\"");
+    }
+
+    // DTO returned to controller
     public record StyledImageResult(
             String imageBase64,
             String fashionText
